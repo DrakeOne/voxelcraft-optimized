@@ -7,10 +7,6 @@
     <meta name="theme-color" content="#2196F3">
     <title>VoxelCraft Optimized</title>
     
-    <!-- Preconnect for performance -->
-    <link rel="preconnect" href="https://cdn.jsdelivr.net">
-    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
-    
     <!-- Critical CSS inline for faster initial render -->
     <style>
         * {
@@ -69,6 +65,14 @@
             margin-top: 20px;
             font-size: 18px;
             font-weight: 500;
+        }
+        
+        #errorText {
+            color: #ff4444;
+            margin-top: 10px;
+            font-size: 14px;
+            max-width: 80%;
+            text-align: center;
         }
         
         #versionDisplay {
@@ -266,6 +270,7 @@
     <div id="loadingScreen">
         <div class="loader"></div>
         <div id="loadingText">Initializing VoxelCraft...</div>
+        <div id="errorText"></div>
     </div>
     
     <!-- Main Game Canvas -->
@@ -297,20 +302,73 @@
         <div id="actionButton" class="touch-control">✋</div>
     </div>
     
-    <!-- Three.js from CDN with SRI for security -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js" 
-            integrity="sha384-QmFkNPCbxP9VUuuBmtUZMQYVMIVDYYPEIszkKqpYZlKMHhqH+XPqvGFEehqL+9Xv" 
-            crossorigin="anonymous"></script>
+    <!-- Three.js from CDN without integrity check for now -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
     
-    <!-- Main Game Scripts -->
-    <script src="js/engine/optimization.js"></script>
-    <script src="js/engine/renderer.js"></script>
-    <script src="js/engine/chunk.js"></script>
-    <script src="js/world/block.js"></script>
-    <script src="js/world/terrain.js"></script>
-    <script src="js/controls/desktop.js"></script>
-    <script src="js/controls/mobile.js"></script>
-    <script src="js/ui/hud.js"></script>
-    <script src="js/main.js"></script>
+    <!-- Inline Three.js fallback if CDN fails -->
+    <script>
+        // Check if Three.js loaded
+        window.addEventListener('load', function() {
+            if (typeof THREE === 'undefined') {
+                console.error('Three.js failed to load from CDN');
+                document.getElementById('errorText').textContent = 'Failed to load 3D library. Please refresh the page.';
+                
+                // Try alternative CDN
+                const script = document.createElement('script');
+                script.src = 'https://unpkg.com/three@0.160.0/build/three.min.js';
+                script.onload = function() {
+                    console.log('Three.js loaded from alternative CDN');
+                    initializeGame();
+                };
+                script.onerror = function() {
+                    document.getElementById('errorText').textContent = 'Unable to load 3D library. Please check your internet connection.';
+                };
+                document.head.appendChild(script);
+            } else {
+                console.log('Three.js loaded successfully');
+                initializeGame();
+            }
+        });
+        
+        function initializeGame() {
+            // Load game scripts in order
+            const scripts = [
+                'js/engine/optimization.js',
+                'js/engine/renderer.js', 
+                'js/engine/chunk.js',
+                'js/world/block.js',
+                'js/world/terrain.js',
+                'js/controls/desktop.js',
+                'js/controls/mobile.js',
+                'js/ui/hud.js',
+                'js/main.js'
+            ];
+            
+            let loadedCount = 0;
+            
+            function loadScript(index) {
+                if (index >= scripts.length) {
+                    console.log('All scripts loaded');
+                    return;
+                }
+                
+                const script = document.createElement('script');
+                script.src = scripts[index];
+                script.onload = function() {
+                    loadedCount++;
+                    console.log(`Loaded ${scripts[index]} (${loadedCount}/${scripts.length})`);
+                    document.getElementById('loadingText').textContent = `Loading game files... (${loadedCount}/${scripts.length})`;
+                    loadScript(index + 1);
+                };
+                script.onerror = function() {
+                    console.error(`Failed to load ${scripts[index]}`);
+                    document.getElementById('errorText').textContent = `Failed to load game file: ${scripts[index]}`;
+                };
+                document.body.appendChild(script);
+            }
+            
+            loadScript(0);
+        }
+    </script>
 </body>
 </html>
