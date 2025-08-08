@@ -44,7 +44,7 @@ class VoxelCraftGame {
         this.world = null;
         this.controls = null;
         this.hud = null;
-        this.clock = new THREE.Clock();
+        this.clock = null;
         this.frameCount = 0;
         this.lastFPSUpdate = 0;
         
@@ -67,6 +67,15 @@ class VoxelCraftGame {
     
     async init() {
         try {
+            console.log('Starting VoxelCraft initialization...');
+            
+            // Initialize Three.js clock
+            if (typeof THREE !== 'undefined') {
+                this.clock = new THREE.Clock();
+            } else {
+                throw new Error('Three.js not loaded');
+            }
+            
             // Show loading screen
             this.updateLoadingStatus('Detecting device capabilities...');
             
@@ -107,7 +116,7 @@ class VoxelCraftGame {
             
         } catch (error) {
             console.error('Failed to initialize game:', error);
-            this.showError('Failed to initialize game. Please refresh the page.');
+            this.showError('Failed to initialize game: ' + error.message);
         }
     }
     
@@ -258,27 +267,48 @@ class VoxelCraftGame {
     
     async initWorld() {
         // Initialize world with terrain generation
-        this.world = new World(this.scene);
-        await this.world.generate();
-        
-        // Update performance stats
-        GameState.performance.chunks = this.world.chunks.size;
-        GameState.performance.blocks = this.world.getBlockCount();
+        if (typeof World !== 'undefined') {
+            this.world = new World(this.scene);
+            await this.world.generate();
+            
+            // Update performance stats
+            GameState.performance.chunks = this.world.chunks.size;
+            GameState.performance.blocks = this.world.getBlockCount();
+        } else {
+            console.warn('World class not loaded, creating placeholder');
+            // Create a simple placeholder ground
+            const geometry = new THREE.BoxGeometry(100, 1, 100);
+            const material = new THREE.MeshLambertMaterial({ color: 0x00ff00 });
+            const ground = new THREE.Mesh(geometry, material);
+            ground.position.y = -1;
+            this.scene.add(ground);
+        }
     }
     
     initControls() {
-        if (GameState.isMobile) {
+        if (GameState.isMobile && typeof MobileControls !== 'undefined') {
             this.controls = new MobileControls(this.camera);
-        } else {
+        } else if (typeof DesktopControls !== 'undefined') {
             this.controls = new DesktopControls(this.camera, this.renderer.domElement);
+        } else {
+            console.warn('Controls not loaded, using basic controls');
+            // Basic fallback controls
+            this.controls = {
+                init: () => {},
+                update: () => {}
+            };
         }
         
         this.controls.init();
     }
     
     initHUD() {
-        this.hud = new HUD();
-        this.hud.init();
+        if (typeof HUD !== 'undefined') {
+            this.hud = new HUD();
+            this.hud.init();
+        } else {
+            console.warn('HUD not loaded');
+        }
     }
     
     setupEventListeners() {
@@ -306,7 +336,10 @@ class VoxelCraftGame {
             if (e.key === 'F3') {
                 e.preventDefault();
                 GameState.settings.enableDebug = !GameState.settings.enableDebug;
-                document.getElementById('debugInfo').classList.toggle('active');
+                const debugInfo = document.getElementById('debugInfo');
+                if (debugInfo) {
+                    debugInfo.classList.toggle('active');
+                }
             }
         });
         
@@ -365,7 +398,7 @@ class VoxelCraftGame {
         }
         
         // Update world
-        if (this.world) {
+        if (this.world && this.world.update) {
             this.world.update(this.camera.position, deltaTime);
         }
         
@@ -421,9 +454,14 @@ class VoxelCraftGame {
     }
     
     showError(message) {
+        const errorText = document.getElementById('errorText');
+        if (errorText) {
+            errorText.textContent = message;
+            errorText.style.display = 'block';
+        }
         const loadingText = document.getElementById('loadingText');
         if (loadingText) {
-            loadingText.textContent = `Error: ${message}`;
+            loadingText.textContent = 'Error occurred';
             loadingText.style.color = '#ff4444';
         }
     }
@@ -448,17 +486,19 @@ class VoxelCraftGame {
     }
 }
 
-// Initialize game when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    // Check for WebGL support
-    if (!window.THREE) {
-        console.error('Three.js not loaded');
-        return;
-    }
-    
-    // Create and start game
+// Initialize game immediately when this script loads
+// Don't wait for DOMContentLoaded since we're loading dynamically
+if (typeof THREE !== 'undefined') {
+    console.log('Initializing VoxelCraft Game...');
     window.game = new VoxelCraftGame();
-});
+} else {
+    console.error('Three.js is required but not loaded');
+    const errorText = document.getElementById('errorText');
+    if (errorText) {
+        errorText.textContent = 'Three.js library not loaded. Please refresh the page.';
+        errorText.style.display = 'block';
+    }
+}
 
 // Export for modules
 if (typeof module !== 'undefined' && module.exports) {
