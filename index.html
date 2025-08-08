@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="Ultra-optimized voxel game for web browsers">
+    <meta name="theme-color" content="#2196F3">
+    <title>VoxelCraft Optimized</title>
+    
+    <!-- Preconnect for performance -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+    
+    <!-- Critical CSS inline for faster initial render -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            overflow: hidden;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            cursor: crosshair;
+        }
+        
+        #loadingScreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
+        }
+        
+        .loader {
+            width: 60px;
+            height: 60px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        #loadingText {
+            color: white;
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: 500;
+        }
+        
+        #versionDisplay {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 5px 10px;
+            border-radius: 5px;
+            backdrop-filter: blur(10px);
+        }
+        
+        #hud {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        .hud-element {
+            position: absolute;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+            font-weight: 500;
+            pointer-events: auto;
+        }
+        
+        #fpsCounter {
+            top: 10px;
+            left: 10px;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px 10px;
+            border-radius: 5px;
+            backdrop-filter: blur(5px);
+        }
+        
+        #debugInfo {
+            top: 10px;
+            right: 10px;
+            font-size: 12px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px 10px;
+            border-radius: 5px;
+            backdrop-filter: blur(5px);
+            display: none;
+        }
+        
+        #debugInfo.active {
+            display: block;
+        }
+        
+        /* Mobile Controls */
+        #mobileControls {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 20;
+        }
+        
+        .touch-control {
+            position: absolute;
+            pointer-events: auto;
+            touch-action: none;
+        }
+        
+        #joystick {
+            bottom: 30px;
+            left: 30px;
+            width: 120px;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            backdrop-filter: blur(5px);
+        }
+        
+        #joystickKnob {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: none;
+        }
+        
+        #jumpButton {
+            bottom: 50px;
+            right: 30px;
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            backdrop-filter: blur(5px);
+        }
+        
+        #actionButton {
+            bottom: 50px;
+            right: 130px;
+            width: 70px;
+            height: 70px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: white;
+            backdrop-filter: blur(5px);
+        }
+        
+        /* Crosshair */
+        #crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            pointer-events: none;
+            z-index: 50;
+        }
+        
+        #crosshair::before,
+        #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.8);
+            box-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
+        }
+        
+        #crosshair::before {
+            width: 2px;
+            height: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        
+        #crosshair::after {
+            width: 100%;
+            height: 2px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            #mobileControls {
+                display: block;
+            }
+            
+            #crosshair {
+                width: 16px;
+                height: 16px;
+            }
+        }
+        
+        /* Performance optimizations */
+        * {
+            will-change: auto;
+        }
+        
+        .gpu-accelerated {
+            transform: translateZ(0);
+            backface-visibility: hidden;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loadingScreen">
+        <div class="loader"></div>
+        <div id="loadingText">Initializing VoxelCraft...</div>
+    </div>
+    
+    <!-- Main Game Canvas -->
+    <canvas id="gameCanvas" class="gpu-accelerated"></canvas>
+    
+    <!-- Version Display -->
+    <div id="versionDisplay">v0.0.1</div>
+    
+    <!-- HUD Elements -->
+    <div id="hud">
+        <div id="fpsCounter" class="hud-element">FPS: 0</div>
+        <div id="debugInfo" class="hud-element">
+            <div>Chunks: <span id="chunkCount">0</span></div>
+            <div>Blocks: <span id="blockCount">0</span></div>
+            <div>Draw Calls: <span id="drawCalls">0</span></div>
+            <div>Memory: <span id="memoryUsage">0</span> MB</div>
+        </div>
+    </div>
+    
+    <!-- Crosshair -->
+    <div id="crosshair"></div>
+    
+    <!-- Mobile Controls -->
+    <div id="mobileControls">
+        <div id="joystick" class="touch-control">
+            <div id="joystickKnob"></div>
+        </div>
+        <div id="jumpButton" class="touch-control">⬆</div>
+        <div id="actionButton" class="touch-control">✋</div>
+    </div>
+    
+    <!-- Three.js from CDN with SRI for security -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js" 
+            integrity="sha384-QmFkNPCbxP9VUuuBmtUZMQYVMIVDYYPEIszkKqpYZlKMHhqH+XPqvGFEehqL+9Xv" 
+            crossorigin="anonymous"></script>
+    
+    <!-- Main Game Scripts -->
+    <script src="js/engine/optimization.js"></script>
+    <script src="js/engine/renderer.js"></script>
+    <script src="js/engine/chunk.js"></script>
+    <script src="js/world/block.js"></script>
+    <script src="js/world/terrain.js"></script>
+    <script src="js/controls/desktop.js"></script>
+    <script src="js/controls/mobile.js"></script>
+    <script src="js/ui/hud.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
