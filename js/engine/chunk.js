@@ -117,7 +117,7 @@ class Chunk {
         return this.neighbors[face];
     }
     
-    // Generate optimized mesh using greedy meshing
+    // Generate simple mesh without greedy meshing for now
     generateMesh() {
         if (this.isEmpty) {
             if (this.mesh) {
@@ -127,54 +127,119 @@ class Chunk {
             return null;
         }
         
-        const mesher = new OptimizationUtils.GreedyMesher();
-        const meshData = mesher.mesh(this.voxels, [this.size, this.size, this.size]);
+        const vertices = [];
+        const normals = [];
+        const uvs = [];
+        const colors = [];
         
-        // Create geometry from mesh data
-        const geometry = new THREE.BufferGeometry();
-        
-        if (meshData.vertices.length > 0) {
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(meshData.vertices, 3));
-            geometry.setAttribute('normal', new THREE.Float32BufferAttribute(meshData.normals, 3));
-            geometry.setAttribute('uv', new THREE.Float32BufferAttribute(meshData.uvs, 2));
-            geometry.setIndex(meshData.indices);
-            
-            // Compute bounding sphere for frustum culling
-            geometry.computeBoundingSphere();
-            
-            // Create or update mesh
-            if (!this.mesh) {
-                const material = this.createMaterial();
-                this.mesh = new THREE.Mesh(geometry, material);
-                this.mesh.position.set(
-                    this.x * this.size,
-                    this.y * this.size,
-                    this.z * this.size
-                );
-                this.mesh.castShadow = false; // Disabled for performance
-                this.mesh.receiveShadow = false;
-                this.mesh.matrixAutoUpdate = false;
-                this.mesh.updateMatrix();
-            } else {
-                // Dispose old geometry
-                this.mesh.geometry.dispose();
-                this.mesh.geometry = geometry;
+        // Simple block-by-block rendering
+        for (let x = 0; x < this.size; x++) {
+            for (let y = 0; y < this.size; y++) {
+                for (let z = 0; z < this.size; z++) {
+                    const voxel = this.getVoxel(x, y, z);
+                    if (voxel === 0) continue; // Skip air blocks
+                    
+                    // Get block color based on type
+                    const blockColor = this.getBlockColor(voxel);
+                    
+                    // Check each face
+                    const faces = [
+                        { dir: 'left', normal: [-1, 0, 0], vertices: [[0,0,0], [0,1,0], [0,1,1], [0,0,1]] },
+                        { dir: 'right', normal: [1, 0, 0], vertices: [[1,0,1], [1,1,1], [1,1,0], [1,0,0]] },
+                        { dir: 'bottom', normal: [0, -1, 0], vertices: [[0,0,0], [0,0,1], [1,0,1], [1,0,0]] },
+                        { dir: 'top', normal: [0, 1, 0], vertices: [[0,1,0], [1,1,0], [1,1,1], [0,1,1]] },
+                        { dir: 'back', normal: [0, 0, -1], vertices: [[1,0,0], [1,1,0], [0,1,0], [0,0,0]] },
+                        { dir: 'front', normal: [0, 0, 1], vertices: [[0,0,1], [0,1,1], [1,1,1], [1,0,1]] }
+                    ];
+                    
+                    for (const face of faces) {
+                        if (this.shouldRenderFace(x, y, z, face.dir)) {
+                            // Add vertices for this face
+                            const baseIndex = vertices.length / 3;
+                            
+                            for (const vertex of face.vertices) {
+                                vertices.push(x + vertex[0], y + vertex[1], z + vertex[2]);
+                                normals.push(...face.normal);
+                                colors.push(blockColor.r, blockColor.g, blockColor.b);
+                            }
+                            
+                            // Add UVs
+                            uvs.push(0, 0, 1, 0, 1, 1, 0, 1);
+                        }
+                    }
+                }
             }
-            
-            this.geometry = geometry;
-            this.needsUpdate = false;
-            
-            return this.mesh;
         }
         
-        return null;
+        if (vertices.length === 0) {
+            this.isEmpty = true;
+            return null;
+        }
+        
+        // Create geometry
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+        geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        
+        // Create indices for quads
+        const indices = [];
+        const numQuads = vertices.length / 12; // 4 vertices per quad, 3 components per vertex
+        for (let i = 0; i < numQuads; i++) {
+            const base = i * 4;
+            indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+        }
+        geometry.setIndex(indices);
+        
+        // Compute bounding sphere for frustum culling
+        geometry.computeBoundingSphere();
+        
+        // Create or update mesh
+        if (!this.mesh) {
+            const material = this.createMaterial();
+            this.mesh = new THREE.Mesh(geometry, material);
+            this.mesh.position.set(
+                this.x * this.size,
+                this.y * this.size,
+                this.z * this.size
+            );
+            this.mesh.castShadow = false;
+            this.mesh.receiveShadow = false;
+            this.mesh.matrixAutoUpdate = false;
+            this.mesh.updateMatrix();
+        } else {
+            // Dispose old geometry
+            this.mesh.geometry.dispose();
+            this.mesh.geometry = geometry;
+        }
+        
+        this.geometry = geometry;
+        this.needsUpdate = false;
+        
+        return this.mesh;
+    }
+    
+    // Get block color based on type
+    getBlockColor(type) {
+        const colors = {
+            1: { r: 0.48, g: 0.99, b: 0 },      // GRASS - bright green
+            2: { r: 0.55, g: 0.27, b: 0.07 },   // DIRT - brown
+            3: { r: 0.5, g: 0.5, b: 0.5 },      // STONE - gray
+            4: { r: 0.96, g: 0.89, b: 0.74 },   // SAND - light yellow
+            5: { r: 0, g: 0.41, b: 0.58 },      // WATER - blue
+            6: { r: 0.55, g: 0.27, b: 0.07 },   // WOOD - brown
+            7: { r: 0.13, g: 0.55, b: 0.13 },   // LEAVES - dark green
+            8: { r: 0.18, g: 0.31, b: 0.31 }    // BEDROCK - dark gray
+        };
+        
+        return colors[type] || { r: 1, g: 0, b: 1 }; // Default magenta for unknown
     }
     
     // Create optimized material
     createMaterial() {
         return new THREE.MeshLambertMaterial({
-            color: 0x00ff00,
-            vertexColors: false,
+            vertexColors: true,
             flatShading: true,
             side: THREE.FrontSide
         });
@@ -184,8 +249,8 @@ class Chunk {
     updateLOD(cameraPosition) {
         this.distance = this.center.distanceTo(cameraPosition);
         
-        const lodSystem = new OptimizationUtils.LODSystem();
-        const newLodLevel = Math.floor(1 / lodSystem.getDetailLevel(this.distance));
+        // Simple LOD system
+        const newLodLevel = this.distance > 100 ? 2 : (this.distance > 50 ? 1 : 0);
         
         if (newLodLevel !== this.lodLevel) {
             this.lodLevel = newLodLevel;
@@ -216,22 +281,12 @@ class ChunkManager {
         this.renderDistance = renderDistance;
         this.chunks = new Map();
         this.activeChunks = new Set();
-        this.chunkPool = new OptimizationUtils.ObjectPool(
-            () => new Chunk(0, 0, 0, chunkSize),
-            (chunk) => {
-                chunk.voxels.fill(0);
-                chunk.needsUpdate = true;
-                chunk.isEmpty = true;
-                chunk.lodLevel = 0;
-                chunk.distance = Infinity;
-            },
-            20
-        );
+        
+        // Simple pool for chunks
+        this.chunkPool = [];
         
         // Optimization systems
         this.frustumCuller = null;
-        this.occlusionCuller = new OptimizationUtils.OcclusionCuller();
-        this.batchRenderer = new OptimizationUtils.BatchRenderer();
         
         // Worker for async chunk generation
         this.generationQueue = [];
@@ -240,7 +295,9 @@ class ChunkManager {
     
     // Initialize frustum culler with camera
     initFrustumCuller(camera) {
-        this.frustumCuller = new OptimizationUtils.FrustumCuller(camera);
+        if (typeof OptimizationUtils !== 'undefined' && OptimizationUtils.FrustumCuller) {
+            this.frustumCuller = new OptimizationUtils.FrustumCuller(camera);
+        }
     }
     
     // Get or create chunk at world coordinates
@@ -257,14 +314,8 @@ class ChunkManager {
         const id = `${x}_${y}_${z}`;
         
         if (!this.chunks.has(id)) {
-            const chunk = this.chunkPool.acquire();
-            chunk.x = x;
-            chunk.y = y;
-            chunk.z = z;
-            chunk.id = id;
-            chunk.boundingBox.min.set(x * this.chunkSize, y * this.chunkSize, z * this.chunkSize);
-            chunk.boundingBox.max.set((x + 1) * this.chunkSize, (y + 1) * this.chunkSize, (z + 1) * this.chunkSize);
-            chunk.boundingBox.getCenter(chunk.center);
+            // Create new chunk
+            const chunk = new Chunk(x, y, z, this.chunkSize);
             
             this.chunks.set(id, chunk);
             this.linkNeighbors(chunk);
@@ -348,12 +399,7 @@ class ChunkManager {
                             
                             // Visibility culling
                             if (chunk.mesh) {
-                                const isVisible = this.frustumCuller ? 
-                                    this.frustumCuller.isVisible(chunk.boundingBox) : true;
-                                
-                                const isOccluded = this.occlusionCuller.isVisible(chunk.id) === false;
-                                
-                                chunk.mesh.visible = isVisible && !isOccluded;
+                                chunk.mesh.visible = true; // Always visible for now
                             }
                         }
                     }
@@ -369,12 +415,6 @@ class ChunkManager {
         });
         
         this.activeChunks = newActiveChunks;
-        
-        // Update occlusion culling
-        const visibleChunks = Array.from(this.chunks.values()).filter(
-            chunk => chunk.mesh && chunk.distance <= this.renderDistance * this.chunkSize
-        );
-        this.occlusionCuller.updateOcclusion(camera, visibleChunks);
     }
     
     // Update chunk mesh
@@ -384,6 +424,10 @@ class ChunkManager {
         
         if (oldMesh && oldMesh !== newMesh) {
             this.scene.remove(oldMesh);
+            oldMesh.geometry.dispose();
+            if (oldMesh.material.dispose) {
+                oldMesh.material.dispose();
+            }
         }
         
         if (newMesh && newMesh !== oldMesh) {
@@ -402,7 +446,6 @@ class ChunkManager {
         
         chunk.dispose();
         this.chunks.delete(chunkId);
-        this.chunkPool.release(chunk);
     }
     
     // Process chunk generation queue
