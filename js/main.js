@@ -189,8 +189,13 @@ class VoxelCraftGame {
         this.renderer.autoClearDepth = true;
         this.renderer.autoClearStencil = false;
         
-        // Set output encoding
-        this.renderer.outputEncoding = THREE.sRGBEncoding;
+        // Set output color space (use the correct property for the Three.js version)
+        if (this.renderer.outputColorSpace !== undefined) {
+            this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        } else if (this.renderer.outputEncoding !== undefined) {
+            this.renderer.outputEncoding = THREE.sRGBEncoding;
+        }
+        
         this.renderer.toneMapping = THREE.NoToneMapping; // Disable for performance
         
         // Enable renderer info for debugging
